@@ -33,10 +33,30 @@ class SpeakerStats(BaseModel):
     negative: int = 0
 
 
+class QualityLabel(str, Enum):
+    green = "green"
+    yellow = "yellow"
+    red = "red"
+    unknown = "unknown"
+
+
+class Signals(BaseModel):
+    sentiment: float
+    neg_share: float
+    trend: float | None = None
+
+
+class Quality(BaseModel):
+    label: QualityLabel
+    score: float | None = None
+    signals: Signals | None = None
+
+
 class AnalyzeResponse(BaseModel):
     filename: str
     duration: float | None = None
     language: str | None = None
     channels: int
+    quality: Quality
     segments: list[Segment]
     stats: dict[str, SpeakerStats]

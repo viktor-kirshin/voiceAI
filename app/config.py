@@ -32,7 +32,23 @@ class Settings(BaseSettings):
 
     # HTTP server
     host: str = "0.0.0.0"
-    port: int = 9000
+    port: int = 999
+
+    # Quality scoring
+    quality_beta: float = 1.5  # вес негатива в значении сегмента
+    quality_recency_k: float = 1.0986  # ln3: концовка ×3 к началу
+    quality_w_operator: float = 0.5
+    quality_w_client: float = 1.0
+    quality_a: float = 0.6  # вес тональности
+    quality_b: float = 0.2  # вес доли негатива
+    quality_c: float = 0.2  # вес тренда
+    quality_neg_w_operator: float = 2.0  # тяжесть негатива оператора в S_neg
+    quality_neg_w_client: float = 1.0  # тяжесть негатива клиента в S_neg
+    quality_trend_min_segments: int = 4
+    quality_threshold_green: float = 0.66
+    quality_threshold_yellow: float = 0.45
+    quality_operator_neg_ratio_red: float = 0.2
+    quality_client_neg_ratio_red: float = 0.5
 
 
 settings = Settings()

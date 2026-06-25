@@ -9,6 +9,7 @@ from .audio import split_channels
 from .config import settings
 from .gemma_client import classify_segment
 from .schemas import AnalyzeResponse, Segment, Sentiment, SpeakerStats
+from .scoring import compute_quality
 from .whisper_client import transcribe_channel
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,7 @@ async def analyze_audio(
         duration=round(duration, 3),
         language=language,
         channels=n_channels,
+        quality=compute_quality(segments),
         segments=segments,
         stats=_build_stats(segments),
     )
