@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # HTTP server
     host: str = "0.0.0.0"
-    port: int = 999
+    port: int = 6000
 
     # Quality scoring
     quality_beta: float = 1.5  # вес негатива в значении сегмента
