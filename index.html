@@ -1,181 +1,703 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Анализ звонков колл-центра</title>
-  <style>
-    :root {
-      --bg: #0f1420; --card: #171d2b; --line: #2a3346; --fg: #e6eaf2;
-      --muted: #8b95a8; --accent: #4f8cff;
-      --green: #2ecc71; --yellow: #f1c40f; --red: #e74c3c; --gray: #7f8c9a;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; background: var(--bg); color: var(--fg);
-      font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      line-height: 1.5;
-    }
-    .wrap { max-width: 900px; margin: 0 auto; padding: 32px 20px 64px; }
-    h1 { font-size: 22px; margin: 0 0 4px; }
-    .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
-    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
-    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-    input[type=file] { color: var(--fg); font-size: 14px; }
-    button {
-      background: var(--accent); color: #fff; border: 0; border-radius: 8px;
-      padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
-    }
-    button:disabled { opacity: .5; cursor: default; }
-    .status { color: var(--muted); font-size: 14px; margin-top: 12px; min-height: 20px; }
-    .status.err { color: var(--red); }
-    .summary { display: flex; align-items: center; gap: 16px; }
-    .dot { width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto; }
-    .g { background: var(--green); } .y { background: var(--yellow); }
-    .r { background: var(--red); } .u { background: var(--gray); }
-    .label { font-size: 18px; font-weight: 700; text-transform: capitalize; }
-    .meta { color: var(--muted); font-size: 13px; }
-    .signals { display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
-    .signals div span { color: var(--muted); font-size: 12px; display: block; }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
-    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
-    .time { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .spk { font-weight: 600; white-space: nowrap; }
-    .pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-    .pill-pos { background: rgba(46,204,113,.18); color: var(--green); }
-    .pill-neu { background: rgba(127,140,154,.18); color: var(--gray); }
-    .pill-neg { background: rgba(231,76,60,.18); color: var(--red); }
-    .hidden { display: none; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>Анализ звонков колл-центра</h1>
-    <p class="sub">Транскрипция стерео-записи (Whisper) и оценка тональности по репликам (Gemma)</p>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Анализ звонков колл-центра</title>
+        <style>
+            :root {
+                --bg1: #0b1020;
+                --bg2: #131a30;
+                --card: rgba(255, 255, 255, 0.04);
+                --card-border: rgba(255, 255, 255, 0.08);
+                --fg: #eef2fb;
+                --muted: #97a1ba;
+                --accent1: #5b8cff;
+                --accent2: #7b5bff;
+                --green: #2ee6a0;
+                --yellow: #ffd23f;
+                --red: #ff5c7a;
+                --gray: #7f8ca6;
+                --shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.6);
+            }
+            * {
+                box-sizing: border-box;
+            }
+            html,
+            body {
+                height: 100%;
+            }
+            body {
+                margin: 0;
+                color: var(--fg);
+                font-family:
+                    ui-sans-serif,
+                    -apple-system,
+                    "SF Pro Text",
+                    Segoe UI,
+                    Roboto,
+                    Helvetica,
+                    Arial,
+                    sans-serif;
+                background:
+                    radial-gradient(
+                        1200px 600px at 12% -10%,
+                        rgba(91, 140, 255, 0.2),
+                        transparent 60%
+                    ),
+                    radial-gradient(
+                        1000px 500px at 100% 0%,
+                        rgba(123, 91, 255, 0.18),
+                        transparent 55%
+                    ),
+                    linear-gradient(180deg, var(--bg1), var(--bg2));
+                background-attachment: fixed;
+                -webkit-font-smoothing: antialiased;
+                line-height: 1.55;
+            }
+            .wrap {
+                max-width: 860px;
+                margin: 0 auto;
+                padding: 48px 20px 80px;
+            }
 
-    <div class="card">
-      <div class="row">
-        <input type="file" id="file" accept="audio/*">
-        <button id="btn">Анализировать</button>
-      </div>
-      <div class="status" id="status"></div>
-    </div>
+            header {
+                text-align: center;
+                margin-bottom: 32px;
+            }
+            .badge-top {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 12px;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: var(--muted);
+                border: 1px solid var(--card-border);
+                padding: 6px 14px;
+                border-radius: 999px;
+                background: var(--card);
+                margin-bottom: 18px;
+            }
+            .badge-top .live {
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background: var(--green);
+                box-shadow: 0 0 10px var(--green);
+            }
+            h1 {
+                font-size: 34px;
+                line-height: 1.15;
+                margin: 0 0 10px;
+                font-weight: 800;
+                letter-spacing: -0.02em;
+                background: linear-gradient(90deg, #fff, #c9d6ff);
+                -webkit-background-clip: text;
+                background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
+            .sub {
+                color: var(--muted);
+                margin: 0;
+                font-size: 16px;
+            }
 
-    <div class="card hidden" id="result">
-      <div class="summary">
-        <div class="dot" id="dot"></div>
-        <div>
-          <div class="label" id="qlabel"></div>
-          <div class="meta" id="qmeta"></div>
+            .card {
+                background: var(--card);
+                border: 1px solid var(--card-border);
+                border-radius: 18px;
+                padding: 22px;
+                margin-bottom: 22px;
+                backdrop-filter: blur(12px);
+                box-shadow: var(--shadow);
+            }
+
+            .drop {
+                border: 1.5px dashed rgba(255, 255, 255, 0.18);
+                border-radius: 16px;
+                padding: 34px 20px;
+                text-align: center;
+                cursor: pointer;
+                transition:
+                    border-color 0.2s,
+                    background 0.2s,
+                    transform 0.1s;
+            }
+            .drop:hover {
+                border-color: rgba(91, 140, 255, 0.6);
+                background: rgba(91, 140, 255, 0.06);
+            }
+            .drop.drag {
+                border-color: var(--accent1);
+                background: rgba(91, 140, 255, 0.12);
+                transform: scale(1.01);
+            }
+            .drop .ic {
+                width: 52px;
+                height: 52px;
+                margin: 0 auto 14px;
+                border-radius: 14px;
+                display: grid;
+                place-items: center;
+                background: linear-gradient(
+                    135deg,
+                    var(--accent1),
+                    var(--accent2)
+                );
+                box-shadow: 0 10px 24px -8px rgba(91, 140, 255, 0.7);
+            }
+            .drop .ic svg {
+                width: 26px;
+                height: 26px;
+                stroke: #fff;
+            }
+            .drop b {
+                font-size: 15px;
+            }
+            .drop small {
+                color: var(--muted);
+                display: block;
+                margin-top: 4px;
+            }
+            .file-chip {
+                display: none;
+                align-items: center;
+                gap: 10px;
+                margin-top: 16px;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid var(--card-border);
+                border-radius: 12px;
+                padding: 10px 14px;
+                font-size: 14px;
+            }
+            .file-chip.show {
+                display: inline-flex;
+            }
+            .file-chip .dotf {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: var(--accent1);
+            }
+            .file-chip small {
+                color: var(--muted);
+            }
+
+            .actions {
+                display: flex;
+                gap: 12px;
+                align-items: center;
+                margin-top: 18px;
+            }
+            button.primary {
+                appearance: none;
+                border: 0;
+                cursor: pointer;
+                color: #fff;
+                font-weight: 700;
+                font-size: 15px;
+                padding: 12px 22px;
+                border-radius: 12px;
+                background: linear-gradient(
+                    135deg,
+                    var(--accent1),
+                    var(--accent2)
+                );
+                box-shadow: 0 12px 28px -10px rgba(91, 140, 255, 0.8);
+                transition:
+                    transform 0.12s,
+                    filter 0.2s,
+                    opacity 0.2s;
+            }
+            button.primary:hover:not(:disabled) {
+                transform: translateY(-1px);
+                filter: brightness(1.06);
+            }
+            button.primary:disabled {
+                opacity: 0.55;
+                cursor: default;
+            }
+            .status {
+                color: var(--muted);
+                font-size: 14px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                min-height: 22px;
+            }
+            .status.err {
+                color: var(--red);
+            }
+            .spinner {
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                border: 2px solid rgba(255, 255, 255, 0.25);
+                border-top-color: #fff;
+                animation: spin 0.8s linear infinite;
+            }
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+
+            /* Quality hero */
+            .hero {
+                display: flex;
+                gap: 26px;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+            .ring {
+                position: relative;
+                width: 132px;
+                height: 132px;
+                flex: 0 0 auto;
+            }
+            .ring svg {
+                transform: rotate(-90deg);
+            }
+            .ring .val {
+                position: absolute;
+                inset: 0;
+                display: grid;
+                place-items: center;
+                text-align: center;
+            }
+            .ring .val b {
+                display: block;
+                font-size: 30px;
+                font-weight: 800;
+                line-height: 1;
+            }
+            .ring .val span {
+                display: block;
+                margin-top: 4px;
+                font-size: 11px;
+                color: var(--muted);
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+            .hero-info {
+                flex: 1;
+                min-width: 220px;
+            }
+            .qlabel {
+                font-size: 24px;
+                font-weight: 800;
+                margin: 0 0 4px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .qlabel .dot {
+                width: 14px;
+                height: 14px;
+                border-radius: 50%;
+            }
+            .qmeta {
+                color: var(--muted);
+                font-size: 14px;
+                margin-bottom: 14px;
+            }
+            .chips {
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            .chip {
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid var(--card-border);
+                border-radius: 12px;
+                padding: 8px 14px;
+                min-width: 92px;
+            }
+            .chip span {
+                display: block;
+                font-size: 11px;
+                color: var(--muted);
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+            .chip b {
+                font-size: 18px;
+            }
+
+            .section-title {
+                font-size: 13px;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: var(--muted);
+                margin: 4px 2px 14px;
+            }
+
+            /* Conversation */
+            .msg {
+                display: flex;
+                margin-bottom: 14px;
+            }
+            .msg.client {
+                justify-content: flex-end;
+            }
+            .bubble {
+                max-width: 76%;
+                padding: 12px 16px;
+                border-radius: 16px;
+                position: relative;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid var(--card-border);
+                border-left: 3px solid var(--gray);
+            }
+            .msg.operator .bubble {
+                border-top-left-radius: 4px;
+            }
+            .msg.client .bubble {
+                border-top-right-radius: 4px;
+                background: rgba(91, 140, 255, 0.1);
+            }
+            .bubble.pos {
+                border-left-color: var(--green);
+            }
+            .bubble.neu {
+                border-left-color: var(--gray);
+            }
+            .bubble.neg {
+                border-left-color: var(--red);
+            }
+            .bhead {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 4px;
+            }
+            .who {
+                font-size: 12px;
+                font-weight: 700;
+            }
+            .who.operator {
+                color: #9db4ff;
+            }
+            .who.client {
+                color: #b79bff;
+            }
+            .btime {
+                font-size: 11px;
+                color: var(--muted);
+                font-variant-numeric: tabular-nums;
+            }
+            .btext {
+                font-size: 15px;
+            }
+            .stag {
+                margin-left: auto;
+                font-size: 11px;
+                font-weight: 700;
+                padding: 2px 9px;
+                border-radius: 999px;
+            }
+            .stag.pos {
+                background: rgba(46, 230, 160, 0.16);
+                color: var(--green);
+            }
+            .stag.neu {
+                background: rgba(127, 140, 166, 0.18);
+                color: #b9c2d8;
+            }
+            .stag.neg {
+                background: rgba(255, 92, 122, 0.16);
+                color: var(--red);
+            }
+
+            .hidden {
+                display: none;
+            }
+            footer {
+                text-align: center;
+                color: var(--muted);
+                font-size: 12px;
+                margin-top: 26px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="wrap">
+            <header>
+                <div class="badge-top">
+                    <span class="live"></span> Whisper + Gemma · vLLM
+                </div>
+                <h1>Анализ звонков колл-центра</h1>
+                <p class="sub">
+                    Транскрипция стерео-записи и оценка тональности по каждой
+                    реплике
+                </p>
+            </header>
+
+            <div class="card">
+                <div class="drop" id="drop">
+                    <div class="ic">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M12 3v12" />
+                            <path d="M7 8l5-5 5 5" />
+                            <path d="M5 21h14" />
+                        </svg>
+                    </div>
+                    <b>Перетащите аудиофайл сюда</b>
+                    <small>или нажмите, чтобы выбрать · WAV, стерео</small>
+                </div>
+                <input type="file" id="file" accept="audio/*" class="hidden" />
+                <div class="file-chip" id="chip">
+                    <span class="dotf"></span><span id="chipName"></span
+                    ><small id="chipSize"></small>
+                </div>
+                <div class="actions">
+                    <button class="primary" id="btn">Анализировать</button>
+                    <div class="status" id="status"></div>
+                </div>
+            </div>
+
+            <div class="card hidden" id="result">
+                <div class="hero">
+                    <div class="ring">
+                        <svg width="132" height="132">
+                            <circle
+                                cx="66"
+                                cy="66"
+                                r="58"
+                                fill="none"
+                                stroke="rgba(255,255,255,.08)"
+                                stroke-width="12"
+                            />
+                            <circle
+                                id="ringFg"
+                                cx="66"
+                                cy="66"
+                                r="58"
+                                fill="none"
+                                stroke="var(--gray)"
+                                stroke-width="12"
+                                stroke-linecap="round"
+                                stroke-dasharray="364"
+                                stroke-dashoffset="364"
+                                style="
+                                    transition:
+                                        stroke-dashoffset 0.8s ease,
+                                        stroke 0.4s;
+                                "
+                            />
+                        </svg>
+                        <div class="val">
+                            <div>
+                                <b id="ringScore">—</b><span>оценка</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="hero-info">
+                        <p class="qlabel">
+                            <span class="dot" id="qdot"></span
+                            ><span id="qlabel"></span>
+                        </p>
+                        <p class="qmeta" id="qmeta"></p>
+                        <div class="chips" id="chips"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="hidden" id="convwrap">
+                <div class="section-title">Диалог по репликам</div>
+                <div id="conv"></div>
+            </div>
         </div>
-      </div>
-      <div class="signals" id="signals"></div>
-    </div>
 
-    <div class="card hidden" id="segwrap">
-      <table>
-        <thead>
-          <tr><th>Время</th><th>Спикер</th><th>Текст</th><th>Тональность</th></tr>
-        </thead>
-        <tbody id="segs"></tbody>
-      </table>
-    </div>
-  </div>
+        <script>
+            const $ = (id) => document.getElementById(id);
+            const drop = $("drop"),
+                fileInput = $("file"),
+                btn = $("btn"),
+                status = $("status");
 
-  <script>
-    const $ = (id) => document.getElementById(id);
-    const btn = $("btn"), fileInput = $("file"), status = $("status");
+            const LABEL_COLOR = {
+                green: "var(--green)",
+                yellow: "var(--yellow)",
+                red: "var(--red)",
+                unknown: "var(--gray)",
+            };
+            const LABEL_TEXT = {
+                green: "Хороший диалог",
+                yellow: "Нормальный диалог",
+                red: "Проблемный диалог",
+                unknown: "Не оценён",
+            };
+            const SENT = {
+                положительный: ["pos", "Позитив"],
+                нейтральный: ["neu", "Нейтрально"],
+                отрицательный: ["neg", "Негатив"],
+            };
+            const SPEAKER = {
+                operator: "Оператор",
+                client: "Клиент",
+                unknown: "Спикер",
+            };
 
-    const SENT_CLASS = { "положительный": "pill-pos", "нейтральный": "pill-neu", "отрицательный": "pill-neg" };
-    const LABEL_CLASS = { green: "g", yellow: "y", red: "r", unknown: "u" };
-    const LABEL_TEXT = { green: "Хороший диалог", yellow: "Нормальный диалог", red: "Плохой диалог", unknown: "Не оценён" };
-    const SPEAKER = { operator: "Оператор", client: "Клиент", unknown: "—" };
+            const fmtTime = (t) => {
+                const s = Math.floor(t % 60),
+                    m = Math.floor(t / 60);
+                return `${m}:${String(s).padStart(2, "0")}`;
+            };
+            const fmtSize = (b) =>
+                b > 1048576
+                    ? (b / 1048576).toFixed(1) + " МБ"
+                    : Math.max(1, Math.round(b / 1024)) + " КБ";
 
-    const fmt = (t) => {
-      const s = Math.floor(t % 60), m = Math.floor(t / 60);
-      return `${m}:${String(s).padStart(2, "0")}`;
-    };
+            // --- Drag & drop / file selection ---
+            drop.addEventListener("click", () => fileInput.click());
+            drop.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                drop.classList.add("drag");
+            });
+            drop.addEventListener("dragleave", () =>
+                drop.classList.remove("drag"),
+            );
+            drop.addEventListener("drop", (e) => {
+                e.preventDefault();
+                drop.classList.remove("drag");
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                    showFile();
+                }
+            });
+            fileInput.addEventListener("change", showFile);
+            function showFile() {
+                const f = fileInput.files[0];
+                if (!f) return;
+                $("chipName").textContent = f.name;
+                $("chipSize").textContent = "· " + fmtSize(f.size);
+                $("chip").classList.add("show");
+                setStatus("");
+            }
 
-    btn.addEventListener("click", async () => {
-      const f = fileInput.files[0];
-      if (!f) { setStatus("Выберите аудиофайл.", true); return; }
+            // --- Analyze ---
+            btn.addEventListener("click", async () => {
+                const f = fileInput.files[0];
+                if (!f) {
+                    setStatus("Сначала выберите аудиофайл.", true);
+                    return;
+                }
+                btn.disabled = true;
+                setStatus(
+                    '<span class="spinner"></span> Обработка… для длинных записей это может занять время.',
+                );
+                $("result").classList.add("hidden");
+                $("convwrap").classList.add("hidden");
+                try {
+                    const fd = new FormData();
+                    fd.append("file", f);
+                    const resp = await fetch("/analyze", {
+                        method: "POST",
+                        body: fd,
+                    });
+                    if (!resp.ok) {
+                        let d = resp.statusText;
+                        try {
+                            d = (await resp.json()).detail || d;
+                        } catch (e) {}
+                        throw new Error(`${resp.status} · ${d}`);
+                    }
+                    render(await resp.json());
+                    setStatus("Готово ✓");
+                } catch (e) {
+                    setStatus("Ошибка: " + e.message, true);
+                } finally {
+                    btn.disabled = false;
+                }
+            });
 
-      btn.disabled = true;
-      setStatus("Обработка… это может занять время для длинных записей.");
-      $("result").classList.add("hidden");
-      $("segwrap").classList.add("hidden");
+            function setStatus(html, isErr) {
+                status.innerHTML = html;
+                status.classList.toggle("err", !!isErr);
+            }
 
-      try {
-        const fd = new FormData();
-        fd.append("file", f);
-        const resp = await fetch("/analyze", { method: "POST", body: fd });
-        if (!resp.ok) {
-          let detail = resp.statusText;
-          try { detail = (await resp.json()).detail || detail; } catch (e) {}
-          throw new Error(`${resp.status}: ${detail}`);
-        }
-        render(await resp.json());
-        setStatus("");
-      } catch (e) {
-        setStatus("Ошибка: " + e.message, true);
-      } finally {
-        btn.disabled = false;
-      }
-    });
+            function render(data) {
+                const q = data.quality || { label: "unknown" };
+                const color = LABEL_COLOR[q.label] || LABEL_COLOR.unknown;
 
-    function setStatus(text, isErr) {
-      status.textContent = text;
-      status.classList.toggle("err", !!isErr);
-    }
+                // ring
+                const circ = 364,
+                    score = q.score != null ? q.score : 0;
+                $("ringFg").style.stroke = color;
+                $("ringFg").style.strokeDashoffset = String(
+                    circ * (1 - Math.max(0, Math.min(1, score))),
+                );
+                $("ringScore").textContent =
+                    q.score != null ? q.score.toFixed(2) : "—";
 
-    function render(data) {
-      const q = data.quality || { label: "unknown" };
-      $("dot").className = "dot " + (LABEL_CLASS[q.label] || "u");
-      $("qlabel").textContent = LABEL_TEXT[q.label] || q.label;
-      $("qmeta").textContent =
-        `Файл: ${data.filename} · каналов: ${data.channels} · ` +
-        `длительность: ${data.duration != null ? fmt(data.duration) : "—"}` +
-        (q.score != null ? ` · оценка: ${q.score}` : "");
+                $("qdot").style.background = color;
+                $("qlabel").textContent = LABEL_TEXT[q.label] || q.label;
+                $("qmeta").textContent =
+                    `Файл: ${data.filename} · каналов: ${data.channels} · длительность: ` +
+                    (data.duration != null ? fmtTime(data.duration) : "—");
 
-      const sig = $("signals");
-      sig.innerHTML = "";
-      if (q.signals) {
-        const items = [
-          ["Тональность", q.signals.sentiment],
-          ["Мало негатива", q.signals.neg_share],
-          ["Тренд", q.signals.trend],
-        ];
-        for (const [name, val] of items) {
-          if (val == null) continue;
-          const d = document.createElement("div");
-          d.innerHTML = `<span>${name}</span><b>${val}</b>`;
-          sig.appendChild(d);
-        }
-      }
-      $("result").classList.remove("hidden");
+                const chips = $("chips");
+                chips.innerHTML = "";
+                if (q.signals) {
+                    [
+                        ["Тональность", q.signals.sentiment],
+                        ["Мало негатива", q.signals.neg_share],
+                        ["Тренд", q.signals.trend],
+                    ].forEach(([n, v]) => {
+                        if (v == null) return;
+                        const el = document.createElement("div");
+                        el.className = "chip";
+                        el.innerHTML = `<span>${n}</span><b>${v}</b>`;
+                        chips.appendChild(el);
+                    });
+                }
+                $("result").classList.remove("hidden");
 
-      const tbody = $("segs");
-      tbody.innerHTML = "";
-      for (const s of data.segments || []) {
-        const tr = document.createElement("tr");
-        const sent = s.sentiment
-          ? `<span class="pill ${SENT_CLASS[s.sentiment] || "pill-neu"}">${s.sentiment}</span>`
-          : `<span class="meta">—</span>`;
-        tr.innerHTML =
-          `<td class="time">${fmt(s.start)}–${fmt(s.end)}</td>` +
-          `<td class="spk">${SPEAKER[s.speaker] || s.speaker}</td>` +
-          `<td>${escapeHtml(s.text)}</td>` +
-          `<td>${sent}</td>`;
-        tbody.appendChild(tr);
-      }
-      $("segwrap").classList.toggle("hidden", !(data.segments && data.segments.length));
-    }
+                // conversation
+                const conv = $("conv");
+                conv.innerHTML = "";
+                (data.segments || []).forEach((s) => {
+                    const side = s.speaker === "client" ? "client" : "operator";
+                    const [cls, txt] = SENT[s.sentiment] || ["neu", "—"];
+                    const row = document.createElement("div");
+                    row.className = "msg " + side;
+                    row.innerHTML = `<div class="bubble ${cls}">
+             <div class="bhead">
+               <span class="who ${side}">${SPEAKER[s.speaker] || s.speaker}</span>
+               <span class="btime">${fmtTime(s.start)}–${fmtTime(s.end)}</span>
+               <span class="stag ${cls}">${txt}</span>
+             </div>
+             <div class="btext">${escapeHtml(s.text)}</div>
+           </div>`;
+                    conv.appendChild(row);
+                });
+                $("convwrap").classList.toggle(
+                    "hidden",
+                    !(data.segments && data.segments.length),
+                );
+            }
 
-    function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, (c) =>
-        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    }
-  </script>
-</body>
+            function escapeHtml(s) {
+                return String(s).replace(
+                    /[&<>"']/g,
+                    (c) =>
+                        ({
+                            "&": "&amp;",
+                            "<": "&lt;",
+                            ">": "&gt;",
+                            '"': "&quot;",
+                            "'": "&#39;",
+                        })[c],
+                );
+            }
+        </script>
+    </body>
 </html>

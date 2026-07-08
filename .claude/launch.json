@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "voice",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "voice"],
+      "port": 8080
+    }
+  ]
+}
