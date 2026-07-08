@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Анализ звонков колл-центра</title>
+  <style>
+    :root {
+      --bg: #0f1420; --card: #171d2b; --line: #2a3346; --fg: #e6eaf2;
+      --muted: #8b95a8; --accent: #4f8cff;
+      --green: #2ecc71; --yellow: #f1c40f; --red: #e74c3c; --gray: #7f8c9a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.5;
+    }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    input[type=file] { color: var(--fg); font-size: 14px; }
+    button {
+      background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+      padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    button:disabled { opacity: .5; cursor: default; }
+    .status { color: var(--muted); font-size: 14px; margin-top: 12px; min-height: 20px; }
+    .status.err { color: var(--red); }
+    .summary { display: flex; align-items: center; gap: 16px; }
+    .dot { width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto; }
+    .g { background: var(--green); } .y { background: var(--yellow); }
+    .r { background: var(--red); } .u { background: var(--gray); }
+    .label { font-size: 18px; font-weight: 700; text-transform: capitalize; }
+    .meta { color: var(--muted); font-size: 13px; }
+    .signals { display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
+    .signals div span { color: var(--muted); font-size: 12px; display: block; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .time { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .spk { font-weight: 600; white-space: nowrap; }
+    .pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .pill-pos { background: rgba(46,204,113,.18); color: var(--green); }
+    .pill-neu { background: rgba(127,140,154,.18); color: var(--gray); }
+    .pill-neg { background: rgba(231,76,60,.18); color: var(--red); }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Анализ звонков колл-центра</h1>
+    <p class="sub">Транскрипция стерео-записи (Whisper) и оценка тональности по репликам (Gemma)</p>
+
+    <div class="card">
+      <div class="row">
+        <input type="file" id="file" accept="audio/*">
+        <button id="btn">Анализировать</button>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="card hidden" id="result">
+      <div class="summary">
+        <div class="dot" id="dot"></div>
+        <div>
+          <div class="label" id="qlabel"></div>
+          <div class="meta" id="qmeta"></div>
+        </div>
+      </div>
+      <div class="signals" id="signals"></div>
+    </div>
+
+    <div class="card hidden" id="segwrap">
+      <table>
+        <thead>
+          <tr><th>Время</th><th>Спикер</th><th>Текст</th><th>Тональность</th></tr>
+        </thead>
+        <tbody id="segs"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const btn = $("btn"), fileInput = $("file"), status = $("status");
+
+    const SENT_CLASS = { "положительный": "pill-pos", "нейтральный": "pill-neu", "отрицательный": "pill-neg" };
+    const LABEL_CLASS = { green: "g", yellow: "y", red: "r", unknown: "u" };
+    const LABEL_TEXT = { green: "Хороший диалог", yellow: "Нормальный диалог", red: "Плохой диалог", unknown: "Не оценён" };
+    const SPEAKER = { operator: "Оператор", client: "Клиент", unknown: "—" };
+
+    const fmt = (t) => {
+      const s = Math.floor(t % 60), m = Math.floor(t / 60);
+      return `${m}:${String(s).padStart(2, "0")}`;
+    };
+
+    btn.addEventListener("click", async () => {
+      const f = fileInput.files[0];
+      if (!f) { setStatus("Выберите аудиофайл.", true); return; }
+
+      btn.disabled = true;
+      setStatus("Обработка… это может занять время для длинных записей.");
+      $("result").classList.add("hidden");
+      $("segwrap").classList.add("hidden");
+
+      try {
+        const fd = new FormData();
+        fd.append("file", f);
+        const resp = await fetch("/analyze", { method: "POST", body: fd });
+        if (!resp.ok) {
+          let detail = resp.statusText;
+          try { detail = (await resp.json()).detail || detail; } catch (e) {}
+          throw new Error(`${resp.status}: ${detail}`);
+        }
+        render(await resp.json());
+        setStatus("");
+      } catch (e) {
+        setStatus("Ошибка: " + e.message, true);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    function setStatus(text, isErr) {
+      status.textContent = text;
+      status.classList.toggle("err", !!isErr);
+    }
+
+    function render(data) {
+      const q = data.quality || { label: "unknown" };
+      $("dot").className = "dot " + (LABEL_CLASS[q.label] || "u");
+      $("qlabel").textContent = LABEL_TEXT[q.label] || q.label;
+      $("qmeta").textContent =
+        `Файл: ${data.filename} · каналов: ${data.channels} · ` +
+        `длительность: ${data.duration != null ? fmt(data.duration) : "—"}` +
+        (q.score != null ? ` · оценка: ${q.score}` : "");
+
+      const sig = $("signals");
+      sig.innerHTML = "";
+      if (q.signals) {
+        const items = [
+          ["Тональность", q.signals.sentiment],
+          ["Мало негатива", q.signals.neg_share],
+          ["Тренд", q.signals.trend],
+        ];
+        for (const [name, val] of items) {
+          if (val == null) continue;
+          const d = document.createElement("div");
+          d.innerHTML = `<span>${name}</span><b>${val}</b>`;
+          sig.appendChild(d);
+        }
+      }
+      $("result").classList.remove("hidden");
+
+      const tbody = $("segs");
+      tbody.innerHTML = "";
+      for (const s of data.segments || []) {
+        const tr = document.createElement("tr");
+        const sent = s.sentiment
+          ? `<span class="pill ${SENT_CLASS[s.sentiment] || "pill-neu"}">${s.sentiment}</span>`
+          : `<span class="meta">—</span>`;
+        tr.innerHTML =
+          `<td class="time">${fmt(s.start)}–${fmt(s.end)}</td>` +
+          `<td class="spk">${SPEAKER[s.speaker] || s.speaker}</td>` +
+          `<td>${escapeHtml(s.text)}</td>` +
+          `<td>${sent}</td>`;
+        tbody.appendChild(tr);
+      }
+      $("segwrap").classList.toggle("hidden", !(data.segments && data.segments.length));
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+  </script>
+</body>
+</html>

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI
 
 from .audio import AudioError
@@ -33,6 +35,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Voice Call-Center Analyzer", version="0.1.0", lifespan=lifespan)
+
+INDEX_HTML = Path(__file__).resolve().parent.parent / "index.html"
+
+
+@app.get("/")
+async def index():
+    return FileResponse(INDEX_HTML)
 
 
 @app.get("/healthz")
